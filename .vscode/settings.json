@@ -1,3 +1,6 @@
 {
-    "python.analysis.addHoverSummaries": false
+    "python.analysis.addHoverSummaries": false,
+    "python.analysis.extraPaths": [
+        "./backend/app"
+    ]
 }

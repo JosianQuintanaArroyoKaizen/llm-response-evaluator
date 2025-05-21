@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 import boto3
 from botocore.exceptions import ClientError
 
-from bedrock_client import BedrockClient
+from backend.app.bedrock_client import BedrockClient
 
 
 class TestBedrockClient(unittest.TestCase):
@@ -116,10 +116,11 @@ class TestBedrockClient(unittest.TestCase):
         
         # Mock the response from invoke_model_with_response_stream
         mock_chunk = MagicMock()
-        mock_chunk.get.return_value = {"bytes": json.dumps({"completion": "This is a "}).encode()}
+        # Set bytes as a direct bytes object, not a dictionary containing bytes
+        mock_chunk.get.return_value = json.dumps({"completion": "This is a "}).encode()
         
         mock_chunk2 = MagicMock()
-        mock_chunk2.get.return_value = {"bytes": json.dumps({"completion": "streaming response."}).encode()}
+        mock_chunk2.get.return_value = json.dumps({"completion": "streaming response."}).encode()
         
         mock_stream = MagicMock()
         mock_stream.__iter__.return_value = [
