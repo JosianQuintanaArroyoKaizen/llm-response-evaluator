@@ -40,7 +40,7 @@ jobs:
       - name: Lint with flake8
         working-directory: ./backend
         run: |
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.aws-sam,venv,.git,__pycache__,*/vendored/*
           
       - name: Run unit tests
         working-directory: ./backend
