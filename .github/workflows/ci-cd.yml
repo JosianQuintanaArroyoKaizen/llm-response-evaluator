@@ -29,7 +29,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.12'
           
       - name: Install dependencies
         working-directory: ./backend
@@ -56,7 +56,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.12'
           
       - name: Install development tools
         run: |
@@ -72,7 +72,10 @@ jobs:
       - name: Validate SAM template
         working-directory: ./backend
         run: |
-          sam validate
+          sam validate --region ${{ secrets.AWS_REGION || 'us-east-1' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           
       - name: Build SAM application
         working-directory: ./backend
@@ -113,7 +116,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.12'
           
       - name: Install AWS SAM CLI
         run: |
@@ -156,7 +159,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.12'
           
       - name: Install dependencies
         run: |
