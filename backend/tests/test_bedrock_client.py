@@ -6,7 +6,7 @@ import json
 import unittest
 from unittest.mock import patch, MagicMock
 
-import boto3
+# import boto3
 from botocore.exceptions import ClientError
 
 from backend.app.bedrock_client import BedrockClient
