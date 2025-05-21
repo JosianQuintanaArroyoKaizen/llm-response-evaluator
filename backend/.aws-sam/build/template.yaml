@@ -1,0 +1,271 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'LLM Response Evaluator API
+
+  SAM Template for the LLM Response Evaluator project with asynchronous processing
+
+  '
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Tracing: Active
+    Environment:
+      Variables:
+        AWS_REGION:
+          Ref: AWS::Region
+        LOG_LEVEL: INFO
+  Api:
+    TracingEnabled: true
+    Cors:
+      AllowMethods: '''*'''
+      AllowHeaders: '''*'''
+      AllowOrigin: '''*'''
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    Description: Deployment stage (dev, test, prod)
+    AllowedValues:
+    - dev
+    - test
+    - prod
+  BedrockModelAccess:
+    Type: String
+    Default: 'true'
+    Description: Whether to enable access to Bedrock models
+    AllowedValues:
+    - 'true'
+    - 'false'
+Resources:
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ApiFunction
+      Handler: app.api.handler
+      Runtime: python3.12
+      Architectures:
+      - x86_64
+      Description: API Lambda for LLM Response Evaluator
+      Layers:
+      - Ref: DependenciesLayer
+      Environment:
+        Variables:
+          EVALUATION_QUEUE_URL:
+            Ref: EvaluationQueue
+          JOBS_TABLE_NAME:
+            Ref: JobsTable
+          HISTORY_TABLE_NAME:
+            Ref: HistoryTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            RestApiId:
+              Ref: ApiGateway
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: JobsTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: HistoryTable
+      - SQSSendMessagePolicy:
+          QueueName:
+            Fn::GetAtt:
+            - EvaluationQueue
+            - QueueName
+      - Statement:
+        - Effect: Allow
+          Action:
+          - bedrock:ListFoundationModels
+          - bedrock:GetFoundationModel
+          Resource: '*'
+    Metadata:
+      SamResourceId: ApiFunction
+  ProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ProcessorFunction
+      Handler: app.processor.lambda_handler
+      Runtime: python3.12
+      Architectures:
+      - x86_64
+      Description: Processor Lambda for LLM Response Evaluator
+      Layers:
+      - Ref: DependenciesLayer
+      Timeout: 900
+      MemorySize: 1024
+      Environment:
+        Variables:
+          EVALUATION_QUEUE_URL:
+            Ref: EvaluationQueue
+          JOBS_TABLE_NAME:
+            Ref: JobsTable
+          HISTORY_TABLE_NAME:
+            Ref: HistoryTable
+          MAX_PROCESSING_TIME: '800'
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue:
+              Fn::GetAtt:
+              - EvaluationQueue
+              - Arn
+            BatchSize: 1
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: JobsTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: HistoryTable
+      - SQSPollerPolicy:
+          QueueName:
+            Fn::GetAtt:
+            - EvaluationQueue
+            - QueueName
+      - Statement:
+        - Effect: Allow
+          Action:
+          - bedrock:ListFoundationModels
+          - bedrock:GetFoundationModel
+          - bedrock:InvokeModel
+          - bedrock-runtime:InvokeModel
+          - bedrock-runtime:InvokeModelWithResponseStream
+          Resource: '*'
+    Metadata:
+      SamResourceId: ProcessorFunction
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName:
+        Ref: Stage
+      Description: API Gateway for LLM Response Evaluator
+      EndpointConfiguration: REGIONAL
+      TracingEnabled: true
+      MethodSettings:
+      - ResourcePath: /*
+        HttpMethod: '*'
+        MetricsEnabled: true
+        DataTraceEnabled: true
+        LoggingLevel: INFO
+  EvaluationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::Sub: ${AWS::StackName}-evaluation-queue-${Stage}
+      DelaySeconds: 0
+      VisibilityTimeout: 900
+      MessageRetentionPeriod: 1209600
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt:
+          - DeadLetterQueue
+          - Arn
+        maxReceiveCount: 3
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::Sub: ${AWS::StackName}-dlq-${Stage}
+      MessageRetentionPeriod: 1209600
+  JobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName:
+        Fn::Sub: ${AWS::StackName}-jobs-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: job_id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: job_id
+        KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+  HistoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName:
+        Fn::Sub: ${AWS::StackName}-history-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: evaluation_id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: evaluation_id
+        KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+  DependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName:
+        Fn::Sub: ${AWS::StackName}-dependencies-${Stage}
+      Description: Dependencies for LLM Response Evaluator
+      ContentUri: DependenciesLayer
+      CompatibleRuntimes:
+      - python3.12
+    Metadata:
+      BuildArchitecture: x86_64
+      BuildMethod: python3.12
+      SamResourceId: DependenciesLayer
+  DLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-dlq-not-empty-${Stage}
+      AlarmDescription: Alarm when messages appear in the dead letter queue
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+      - Name: QueueName
+        Value:
+          Fn::GetAtt:
+          - DeadLetterQueue
+          - QueueName
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThan
+      TreatMissingData: notBreaching
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value:
+      Fn::Sub: https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Stage}
+  ApiFunction:
+    Description: API Lambda ARN
+    Value:
+      Fn::GetAtt:
+      - ApiFunction
+      - Arn
+  ProcessorFunction:
+    Description: Processor Lambda ARN
+    Value:
+      Fn::GetAtt:
+      - ProcessorFunction
+      - Arn
+  EvaluationQueue:
+    Description: SQS Queue URL for evaluation jobs
+    Value:
+      Ref: EvaluationQueue
+  JobsTable:
+    Description: DynamoDB table for job tracking
+    Value:
+      Ref: JobsTable
+  HistoryTable:
+    Description: DynamoDB table for evaluation history
+    Value:
+      Ref: HistoryTable
