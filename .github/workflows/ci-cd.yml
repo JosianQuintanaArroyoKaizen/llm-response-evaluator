@@ -80,7 +80,7 @@ jobs:
           sam build --use-container
           
       - name: Archive built artifacts
-        uses: actions/upload-artifact@v2  # Changed from v3 to v2
+        uses: actions/upload-artifact@v4  # Changed from v2 to v4
         with:
           name: backend-build
           path: |
@@ -120,7 +120,7 @@ jobs:
           pip install aws-sam-cli
           
       - name: Download build artifacts
-        uses: actions/download-artifact@v2  # Changed from v3 to v2
+        uses: actions/download-artifact@v4  # Changed from v2 to v4
         with:
           name: backend-build
           path: .
