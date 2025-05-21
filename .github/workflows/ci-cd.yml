@@ -81,6 +81,8 @@ jobs:
         working-directory: ./backend
         run: |
           sam build --use-container
+        env:
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
           
       - name: Archive built artifacts
         uses: actions/upload-artifact@v4  # Changed from v2 to v4
