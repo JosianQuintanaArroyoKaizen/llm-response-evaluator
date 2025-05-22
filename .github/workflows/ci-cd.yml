@@ -163,6 +163,10 @@ jobs:
       - name: Deploy SAM application
         working-directory: ./backend
         run: |
+
+          # Create dependencies directory
+          mkdir -p .aws-sam/build/DependenciesLayer
+          cp -r dependencies/* .aws-sam/build/DependenciesLayer/
           # Deploy with dependencies layer
           sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
             --parameter-overrides "Stage=${{ github.event.inputs.deploy_env || 'dev' }}" \
