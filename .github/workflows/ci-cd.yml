@@ -63,34 +63,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install aws-sam-cli
           
-      - name: Prepare Python dependencies layer
+      - name: Create dependencies layer
         working-directory: ./backend
         run: |
-          # Create the proper directory structure for Lambda layer
+          # Create the Python dependencies layer with proper structure
           mkdir -p dependencies/python
-          
-          # Install the dependencies directly into the layer structure
           pip install -r requirements.txt -t dependencies/python
           
-          # Remove unnecessary files to reduce layer size
-          find dependencies/python -name "*.pyc" -delete
-          find dependencies/python -name "__pycache__" -exec rm -rf {} +
-          find dependencies/python -name "*.dist-info" -exec rm -rf {} +
-          find dependencies/python -name "*.egg-info" -exec rm -rf {} +
+          # Clean up unnecessary files to reduce size
+          find dependencies/python -name "*.pyc" -delete || true
+          find dependencies/python -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find dependencies/python -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
+          find dependencies/python -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
           
-          # Verify structure
-          echo "Created layer with structure:"
+          # Verify layer structure
+          echo "Created dependencies layer with structure:"
           ls -la dependencies
-          ls -la dependencies/python
+          ls -la dependencies/python | head -10
       
-      - name: Debug directories
-        working-directory: ./backend
-        run: |
-          echo "Contents of ./dependencies:"
-          ls -la ./dependencies/
-          echo "Contents of .aws-sam/build (after build):"
-          ls -la .aws-sam/build/ || echo "Directory doesn't exist"
-          
       - name: Validate SAM template
         working-directory: ./backend
         run: |
@@ -102,23 +92,19 @@ jobs:
       - name: Build SAM application
         working-directory: ./backend
         run: |
-          # Use --skip-pull-image to speed up the build
-          sam build --use-container --skip-pull-image
-          
-          # Verify the build output
-          echo "Build output structure:"
-          find .aws-sam/build -type d | sort
+          sam build --use-container
         env:
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
           
       - name: Archive built artifacts
-        uses: actions/upload-artifact@v4  # Changed from v2 to v4
+        uses: actions/upload-artifact@v4
         with:
           name: backend-build
           path: |
             backend/.aws-sam/
             backend/template.yaml
             backend/samconfig.toml
+            backend/dependencies/
 
   test-frontend:
     runs-on: ubuntu-latest
@@ -164,22 +150,23 @@ jobs:
           name: backend-build
           path: .
           
+      - name: Verify downloaded artifacts
+        working-directory: ./backend
+        run: |
+          echo "Downloaded artifacts structure:"
+          ls -la
+          echo "Dependencies directory check:"
+          ls -la dependencies || echo "Dependencies directory NOT found!"
+          echo ".aws-sam directory check:"
+          ls -la .aws-sam/build || echo ".aws-sam/build directory NOT found!"
+          
       - name: Deploy SAM application
         working-directory: ./backend
         run: |
-          # Verify files before deployment
-          echo "Checking for dependencies layer directory:"
-          if [ -d "dependencies" ]; then
-            echo "✅ dependencies directory exists"
-            ls -la dependencies
-          else
-            echo "❌ dependencies directory NOT found"
-          fi
-          
-          # Deploy with verbose logging
+          # Deploy with dependencies layer
           sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
             --parameter-overrides "Stage=${{ github.event.inputs.deploy_env || 'dev' }}" \
-            --s3-bucket "questionnaire-knowledge-base" --debug
+            --s3-bucket "questionnaire-knowledge-base"
 
   deploy-frontend:
     runs-on: ubuntu-latest
