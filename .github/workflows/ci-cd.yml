@@ -158,11 +158,36 @@ jobs:
 
       - name: Update CloudWatch alarm comparison operator
         run: |
-          # Find and replace the comparison operator directly
-          sed -i 's/ComparisonOperator: GreaterThan/ComparisonOperator: GreaterThanThreshold/g' backend/template.yaml
+          # First, find where the template.yaml file actually is
+          TEMPLATE_PATH=$(find . -name template.yaml | head -1)
+          echo "Found template at: $TEMPLATE_PATH"
+          
+          if [ -z "$TEMPLATE_PATH" ]; then
+            echo "❌ template.yaml not found!"
+            exit 1
+          fi
+          
+          # Show the current value
+          echo "Current ComparisonOperator value:"
+          grep -A 1 "ComparisonOperator:" $TEMPLATE_PATH || echo "ComparisonOperator not found"
+          
+          # Make the replacement
+          sed -i 's/ComparisonOperator: GreaterThan/ComparisonOperator: GreaterThanThreshold/g' $TEMPLATE_PATH
           
           # Verify the change
-          grep -A 1 ComparisonOperator backend/template.yaml
+          echo "After replacement:"
+          grep -A 1 "ComparisonOperator:" $TEMPLATE_PATH
+          
+      - name: Validate modified template
+        run: |
+          TEMPLATE_PATH=$(find . -name template.yaml | head -1)
+          sam validate --template $TEMPLATE_PATH
+          
+      - name: Check deployment parameters
+        run: |
+          echo "Deploying with:"
+          echo "- Stage: ${{ github.event.inputs.deploy_env || 'dev' }}"
+          echo "- S3 Bucket: questionnaire-knowledge-base"
           
       - name: Deploy SAM application
         working-directory: ./backend
@@ -186,10 +211,23 @@ jobs:
           echo "Contents of .aws-sam/build/DependenciesLayer:"
           ls -la .aws-sam/build/DependenciesLayer/
           
-          # Deploy
+          # Deploy with error handling
+          set +e  # Don't exit on error
           sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
             --parameter-overrides "Stage=${{ github.event.inputs.deploy_env || 'dev' }}" \
             --s3-bucket "questionnaire-knowledge-base"
+          
+          DEPLOY_STATUS=$?
+          if [ $DEPLOY_STATUS -ne 0 ]; then
+            echo "❌ Deployment failed with status $DEPLOY_STATUS"
+            # List CloudFormation events for debugging
+            aws cloudformation describe-stack-events \
+              --stack-name llm-response-evaluator \
+              --max-items 10 \
+              --query "StackEvents[*].{Status:ResourceStatus,Type:ResourceType,Reason:ResourceStatusReason}" \
+              --output table
+            exit $DEPLOY_STATUS
+          fi
 
   deploy-frontend:
     runs-on: ubuntu-latest
