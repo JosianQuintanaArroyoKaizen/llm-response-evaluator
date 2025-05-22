@@ -155,7 +155,14 @@ jobs:
           echo "Root directory contents:"
           ls -la
           find . -type d -name "dependencies" | xargs -I{} ls -la {} || echo "No dependencies directories found"
+
+      - name: Update CloudWatch alarm comparison operator
+        run: |
+          # Find and replace the comparison operator directly
+          sed -i 's/ComparisonOperator: GreaterThan/ComparisonOperator: GreaterThanThreshold/g' backend/template.yaml
           
+          # Verify the change
+          grep -A 1 ComparisonOperator backend/template.yaml
           
       - name: Deploy SAM application
         working-directory: ./backend
