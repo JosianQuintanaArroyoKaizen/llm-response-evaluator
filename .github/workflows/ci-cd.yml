@@ -66,8 +66,18 @@ jobs:
       - name: Install dependencies
         working-directory: ./backend
         run: |
+          # Create requirements.txt file in the dependencies directory
           mkdir -p ./dependencies
-          pip install -r requirements.txt -t ./dependencies/python
+          cp requirements.txt ./dependencies/
+          # Let SAM build handle the rest through the BuildMethod
+      
+      - name: Debug directories
+        working-directory: ./backend
+        run: |
+          echo "Contents of ./dependencies:"
+          ls -la ./dependencies/
+          echo "Contents of .aws-sam/build (after build):"
+          ls -la .aws-sam/build/ || echo "Directory doesn't exist"
           
       - name: Validate SAM template
         working-directory: ./backend
