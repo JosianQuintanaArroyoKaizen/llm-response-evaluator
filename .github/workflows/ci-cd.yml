@@ -150,24 +150,36 @@ jobs:
           name: backend-build
           path: .
           
-      - name: Verify downloaded artifacts
-        working-directory: ./backend
+      - name: Check downloaded artifact structure
         run: |
-          echo "Downloaded artifacts structure:"
+          echo "Root directory contents:"
           ls -la
-          echo "Dependencies directory check:"
-          ls -la dependencies || echo "Dependencies directory NOT found!"
-          echo ".aws-sam directory check:"
-          ls -la .aws-sam/build || echo ".aws-sam/build directory NOT found!"
+          find . -type d -name "dependencies" | xargs -I{} ls -la {} || echo "No dependencies directories found"
+          
           
       - name: Deploy SAM application
         working-directory: ./backend
         run: |
-
-          # Create dependencies directory
+          # Find the dependencies directory
+          DEPS_PATH=$(find .. -type d -name "dependencies" | grep -v "node_modules" | head -1)
+          echo "Found dependencies at: $DEPS_PATH"
+          
+          if [ -z "$DEPS_PATH" ]; then
+            echo "Dependencies directory not found!"
+            exit 1
+          fi
+          
+          # Ensure target directory exists
           mkdir -p .aws-sam/build/DependenciesLayer
-          cp -r dependencies/* .aws-sam/build/DependenciesLayer/
-          # Deploy with dependencies layer
+          
+          # Copy dependencies
+          cp -r $DEPS_PATH/* .aws-sam/build/DependenciesLayer/ || echo "No files to copy"
+          
+          # List what we have in the target directory
+          echo "Contents of .aws-sam/build/DependenciesLayer:"
+          ls -la .aws-sam/build/DependenciesLayer/
+          
+          # Deploy
           sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
             --parameter-overrides "Stage=${{ github.event.inputs.deploy_env || 'dev' }}" \
             --s3-bucket "questionnaire-knowledge-base"
