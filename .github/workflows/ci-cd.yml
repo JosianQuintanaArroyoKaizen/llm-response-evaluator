@@ -211,11 +211,16 @@ jobs:
           echo "Contents of .aws-sam/build/DependenciesLayer:"
           ls -la .aws-sam/build/DependenciesLayer/
           
+          # Find the modified template
+          TEMPLATE_PATH=$(find .. -name template.yaml | head -1)
+          echo "Using template file: $TEMPLATE_PATH"
+          
           # Deploy with error handling
           set +e  # Don't exit on error
           sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
             --parameter-overrides "Stage=${{ github.event.inputs.deploy_env || 'dev' }}" \
-            --s3-bucket "questionnaire-knowledge-base"
+            --s3-bucket "questionnaire-knowledge-base" \
+            --template-file $TEMPLATE_PATH
           
           DEPLOY_STATUS=$?
           if [ $DEPLOY_STATUS -ne 0 ]; then
