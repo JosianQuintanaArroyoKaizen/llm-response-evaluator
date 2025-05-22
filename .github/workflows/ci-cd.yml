@@ -63,13 +63,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install aws-sam-cli
           
-      - name: Install dependencies
+      - name: Prepare Python dependencies layer
         working-directory: ./backend
         run: |
-          # Create requirements.txt file in the dependencies directory
-          mkdir -p ./dependencies
-          cp requirements.txt ./dependencies/
-          # Let SAM build handle the rest through the BuildMethod
+          # Create the proper directory structure for Lambda layer
+          mkdir -p dependencies/python
+          
+          # Install the dependencies directly into the layer structure
+          pip install -r requirements.txt -t dependencies/python
+          
+          # Remove unnecessary files to reduce layer size
+          find dependencies/python -name "*.pyc" -delete
+          find dependencies/python -name "__pycache__" -exec rm -rf {} +
+          find dependencies/python -name "*.dist-info" -exec rm -rf {} +
+          find dependencies/python -name "*.egg-info" -exec rm -rf {} +
+          
+          # Verify structure
+          echo "Created layer with structure:"
+          ls -la dependencies
+          ls -la dependencies/python
       
       - name: Debug directories
         working-directory: ./backend
@@ -90,7 +102,12 @@ jobs:
       - name: Build SAM application
         working-directory: ./backend
         run: |
-          sam build --use-container
+          # Use --skip-pull-image to speed up the build
+          sam build --use-container --skip-pull-image
+          
+          # Verify the build output
+          echo "Build output structure:"
+          find .aws-sam/build -type d | sort
         env:
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
           
@@ -150,9 +167,19 @@ jobs:
       - name: Deploy SAM application
         working-directory: ./backend
         run: |
+          # Verify files before deployment
+          echo "Checking for dependencies layer directory:"
+          if [ -d "dependencies" ]; then
+            echo "✅ dependencies directory exists"
+            ls -la dependencies
+          else
+            echo "❌ dependencies directory NOT found"
+          fi
+          
+          # Deploy with verbose logging
           sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
             --parameter-overrides "Stage=${{ github.event.inputs.deploy_env || 'dev' }}" \
-            --s3-bucket "questionnaire-knowledge-base"
+            --s3-bucket "questionnaire-knowledge-base" --debug
 
   deploy-frontend:
     runs-on: ubuntu-latest

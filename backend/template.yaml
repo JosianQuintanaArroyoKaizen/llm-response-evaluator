@@ -199,9 +199,6 @@ Resources:
       ContentUri: ./dependencies/
       CompatibleRuntimes:
         - python3.12
-    Metadata:
-      BuildMethod: python3.12
-      BuildArchitecture: x86_64
 
   # CloudWatch Alarm for Dead Letter Queue
   DLQAlarm:
