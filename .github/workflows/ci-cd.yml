@@ -156,26 +156,25 @@ jobs:
           ls -la
           find . -type d -name "dependencies" | xargs -I{} ls -la {} || echo "No dependencies directories found"
 
-      - name: Update CloudWatch alarm comparison operator
+      - name: Update CloudWatch alarm comparison operator if needed
         run: |
-          # First, find where the template.yaml file actually is
           TEMPLATE_PATH=$(find . -name template.yaml | head -1)
           echo "Found template at: $TEMPLATE_PATH"
           
-          if [ -z "$TEMPLATE_PATH" ]; then
-            echo "❌ template.yaml not found!"
-            exit 1
+          # Check current value
+          CURRENT_VALUE=$(grep -A 1 "ComparisonOperator:" $TEMPLATE_PATH | tail -1)
+          echo "Current ComparisonOperator value: $CURRENT_VALUE"
+          
+          # Only make the replacement if it's set to GreaterThan
+          if grep -q "ComparisonOperator: GreaterThan" $TEMPLATE_PATH; then
+            echo "Updating ComparisonOperator from GreaterThan to GreaterThanThreshold"
+            sed -i 's/ComparisonOperator: GreaterThan/ComparisonOperator: GreaterThanThreshold/g' $TEMPLATE_PATH
+          else
+            echo "ComparisonOperator already set correctly, no changes needed"
           fi
           
-          # Show the current value
-          echo "Current ComparisonOperator value:"
-          grep -A 1 "ComparisonOperator:" $TEMPLATE_PATH || echo "ComparisonOperator not found"
-          
-          # Make the replacement
-          sed -i 's/ComparisonOperator: GreaterThan/ComparisonOperator: GreaterThanThreshold/g' $TEMPLATE_PATH
-          
-          # Verify the change
-          echo "After replacement:"
+          # Verify the final value
+          echo "Final ComparisonOperator value:"
           grep -A 1 "ComparisonOperator:" $TEMPLATE_PATH
           
       - name: Validate modified template
