@@ -188,6 +188,14 @@ jobs:
           echo "Deploying with:"
           echo "- Stage: ${{ github.event.inputs.deploy_env || 'dev' }}"
           echo "- S3 Bucket: questionnaire-knowledge-base"
+
+      - name: Ensure dependencies are in the right location
+        working-directory: ./backend
+        run: |
+          # Create the dependencies directory if it doesn't exist
+          mkdir -p dependencies
+          # Copy from where the dependencies were found to where they're expected
+          cp -r ../dependencies/* dependencies/ || echo "No files to copy"
           
       - name: Deploy SAM application
         working-directory: ./backend
