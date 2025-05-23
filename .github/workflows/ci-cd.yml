@@ -63,23 +63,49 @@ jobs:
           python -m pip install --upgrade pip
           pip install aws-sam-cli
           
-      - name: Create dependencies layer
+      - name: Create optimized dependency layers
         working-directory: ./backend
         run: |
-          # Create the Python dependencies layer with proper structure
-          mkdir -p dependencies/python
-          pip install -r requirements.txt -t dependencies/python
+          # 1. Create core dependencies layer (without boto3)
+          mkdir -p core-dependencies/python
+          echo "Installing core dependencies..."
+          pip install fastapi mangum pydantic python-dotenv requests -t core-dependencies/python
           
-          # Clean up unnecessary files to reduce size
-          find dependencies/python -name "*.pyc" -delete || true
-          find dependencies/python -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-          find dependencies/python -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
-          find dependencies/python -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+          # 2. Create NLP/ML dependencies layer
+          mkdir -p nlp-dependencies/python
+          echo "Installing NLP dependencies..."
+          pip install nltk textstat textblob guess_language-spirit -t nlp-dependencies/python
           
-          # Verify layer structure
-          echo "Created dependencies layer with structure:"
-          ls -la dependencies
-          ls -la dependencies/python | head -10
+          # Aggressive cleanup to minimize layer size
+          for layer in core-dependencies nlp-dependencies; do
+            echo "Cleaning up $layer..."
+            # Remove boto3 and botocore which are already in Lambda runtime
+            rm -rf $layer/python/boto* 2>/dev/null || true
+            
+            # Remove all cache files
+            find $layer/python -name "*.pyc" -delete || true
+            find $layer/python -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+            
+            # Remove distribution info
+            find $layer/python -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
+            find $layer/python -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+            
+            # Remove tests directories to save space
+            find $layer/python -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true
+            find $layer/python -type d -name "test" -exec rm -rf {} + 2>/dev/null || true
+            
+            # Remove documentation and examples
+            find $layer/python -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true
+            find $layer/python -type d -name "doc" -exec rm -rf {} + 2>/dev/null || true
+            find $layer/python -type d -name "examples" -exec rm -rf {} + 2>/dev/null || true
+            
+            # Strip binaries if present
+            find $layer/python -name "*.so" -exec strip {} \; 2>/dev/null || true
+            
+            # Check layer size
+            LAYER_SIZE=$(du -sm $layer | cut -f1)
+            echo "$layer size: ${LAYER_SIZE}MB"
+          done
       
       - name: Validate SAM template
         working-directory: ./backend
@@ -104,7 +130,8 @@ jobs:
             backend/.aws-sam/
             backend/template.yaml
             backend/samconfig.toml
-            backend/dependencies/
+            backend/core-dependencies/
+            backend/nlp-dependencies/
 
   test-frontend:
     runs-on: ubuntu-latest
@@ -154,59 +181,52 @@ jobs:
         run: |
           echo "Root directory contents:"
           ls -la
-          find . -type d -name "dependencies" | xargs -I{} ls -la {} || echo "No dependencies directories found"
+          find . -type d -name "core-dependencies" | xargs -I{} ls -la {} || echo "No core-dependencies directories found"
+          find . -type d -name "nlp-dependencies" | xargs -I{} ls -la {} || echo "No nlp-dependencies directories found"
           
       - name: Validate modified template
         run: |
           TEMPLATE_PATH=$(find . -name template.yaml | head -1)
           sam validate --template $TEMPLATE_PATH
           
-      - name: Check deployment parameters
-        run: |
-          echo "Deploying with:"
-          echo "- Stage: ${{ github.event.inputs.deploy_env || 'dev' }}"
-          echo "- S3 Bucket: questionnaire-knowledge-base"
-
       - name: Ensure dependencies are in the right location
-        working-directory: ./backend
         run: |
-          # Create the dependencies directory if it doesn't exist
-          mkdir -p dependencies
-          # Copy from where the dependencies were found to where they're expected
-          cp -r ../dependencies/* dependencies/ || echo "No files to copy"
+          # Make sure core and NLP dependencies are in the right place
+          mkdir -p backend/core-dependencies
+          mkdir -p backend/nlp-dependencies
+          
+          # Copy from downloaded artifacts if needed
+          if [ -d "./core-dependencies" ]; then
+            cp -r ./core-dependencies/* backend/core-dependencies/ || true
+          fi
+          
+          if [ -d "./nlp-dependencies" ]; then
+            cp -r ./nlp-dependencies/* backend/nlp-dependencies/ || true
+          fi
           
       - name: Deploy SAM application
         working-directory: ./backend
         run: |
-          # Find the dependencies directory
-          DEPS_PATH=$(find .. -type d -name "dependencies" | grep -v "node_modules" | head -1)
-          echo "Found dependencies at: $DEPS_PATH"
+          # Ensure layers are set up properly
+          mkdir -p .aws-sam/build/CoreDependenciesLayer
+          mkdir -p .aws-sam/build/NltkDependenciesLayer
           
-          if [ -z "$DEPS_PATH" ]; then
-            echo "Dependencies directory not found!"
-            exit 1
-          fi
+          # Copy dependencies to build locations
+          cp -r core-dependencies/* .aws-sam/build/CoreDependenciesLayer/ || true
+          cp -r nlp-dependencies/* .aws-sam/build/NltkDependenciesLayer/ || true
           
-          # Ensure target directory exists
-          mkdir -p .aws-sam/build/DependenciesLayer
-          
-          # Copy dependencies
-          cp -r $DEPS_PATH/* .aws-sam/build/DependenciesLayer/ || echo "No files to copy"
-          
-          # List what we have in the target directory
-          echo "Contents of .aws-sam/build/DependenciesLayer:"
-          ls -la .aws-sam/build/DependenciesLayer/
-          
-          # Find the modified template
-          TEMPLATE_PATH=$(find .. -name template.yaml | head -1)
-          echo "Using template file: $TEMPLATE_PATH"
+          # List layer sizes
+          echo "Core dependencies layer size:"
+          du -sh .aws-sam/build/CoreDependenciesLayer || true
+          echo "NLTK dependencies layer size:"
+          du -sh .aws-sam/build/NltkDependenciesLayer || true
           
           # Deploy with error handling
           set +e  # Don't exit on error
           sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
             --parameter-overrides "Stage=${{ github.event.inputs.deploy_env || 'dev' }}" \
             --s3-bucket "questionnaire-knowledge-base" \
-            --template-file $TEMPLATE_PATH
+            --template-file template.yaml
           
           DEPLOY_STATUS=$?
           if [ $DEPLOY_STATUS -ne 0 ]; then

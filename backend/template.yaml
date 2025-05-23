@@ -50,7 +50,8 @@ Resources:
         - x86_64
       Description: API Lambda for LLM Response Evaluator
       Layers:
-        - !Ref DependenciesLayer
+        - !Ref CoreDependenciesLayer
+        - !Ref NltkDependenciesLayer
       Environment:
         Variables:
           EVALUATION_QUEUE_URL: !Ref EvaluationQueue
@@ -88,7 +89,8 @@ Resources:
         - x86_64
       Description: Processor Lambda for LLM Response Evaluator
       Layers:
-        - !Ref DependenciesLayer
+        - !Ref CoreDependenciesLayer
+        - !Ref NltkDependenciesLayer
       Timeout: 900  # 15 minutes
       MemorySize: 1024
       Environment:
@@ -190,13 +192,23 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
-  # Dependencies Layer
-  DependenciesLayer:
+  # Core Dependencies Layer
+  CoreDependenciesLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: !Sub "${AWS::StackName}-dependencies-${Stage}"
-      Description: Dependencies for LLM Response Evaluator
-      ContentUri: ./dependencies/
+      LayerName: !Sub "${AWS::StackName}-core-dependencies-${Stage}"
+      Description: Core dependencies for LLM Response Evaluator
+      ContentUri: ./core-dependencies/
+      CompatibleRuntimes:
+        - python3.12
+
+  # NLTK Dependencies Layer
+  NltkDependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-nltk-dependencies-${Stage}"
+      Description: NLTK and text processing dependencies
+      ContentUri: ./nlp-dependencies/
       CompatibleRuntimes:
         - python3.12
 
@@ -215,7 +227,7 @@ Resources:
       Period: 60
       EvaluationPeriods: 1
       Threshold: 0
-      ComparisonOperator: GreaterThanThreshold  # Changed from GreaterThan
+      ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
 
 Outputs:
