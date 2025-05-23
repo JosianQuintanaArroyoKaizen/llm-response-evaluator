@@ -134,8 +134,8 @@ Resources:
         - ResourcePath: "/*"
           HttpMethod: "*"
           MetricsEnabled: true
-          DataTraceEnabled: true
-          LoggingLevel: INFO
+          DataTraceEnabled: false  # Should be true for production
+          LoggingLevel: OFF  # Should be INFO for production
 
   # SQS Queue for Async Processing
   EvaluationQueue:
