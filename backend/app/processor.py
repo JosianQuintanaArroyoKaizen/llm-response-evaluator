@@ -77,7 +77,7 @@ def process_job(job_data: Dict[str, Any]) -> Dict[str, Any]:
         update_job_status(job_id, JobStatus.PROCESSING)
         
         # Initialize clients
-        region = os.environ.get('AWS_REGION', 'us-east-1')
+        region = os.environ.get('REGION', 'us-east-1')
         bedrock_client = BedrockClient(region_name=region)
         evaluator = ResponseEvaluator()
         

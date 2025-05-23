@@ -12,7 +12,7 @@ Globals:
     Tracing: Active
     Environment:
       Variables:
-        AWS_REGION: !Ref AWS::Region
+        REGION: !Ref AWS::Region
         LOG_LEVEL: INFO
   Api:
     TracingEnabled: true

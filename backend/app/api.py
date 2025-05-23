@@ -161,7 +161,7 @@ class HistoryResponse(BaseModel):
 # Dependency for getting clients
 def get_bedrock_client():
     """Dependency for getting a BedrockClient instance."""
-    region = os.environ.get('AWS_REGION', 'us-east-1')
+    region = os.environ.get('REGION', 'us-east-1')
     return BedrockClient(region_name=region)
 
 
